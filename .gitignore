@@ -1,2 +1,237 @@
-# Internal Documentations
+# Dependencies
+
+node_modules
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Testing
+
+/coverage
+
+# Next.js build
+
+/.next/
+/out/
+
+#Production build
+
+/build
+
+# Typescript
+
+*.tsbuildinfo
+next-env.d.ts
+
+
+
+# ENV & SECRETS (CRITICAL)
+
+
+.env
+.env.*
+!.env.example
+
+# Local overrides
+
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Secrets / Keys
+
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+secrets.json
+credentials.json
+
+
+
+# LOGS & DEBUG
+
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+logs/
+*.out
+
+
+
+# OS / SYSTEM FILES
+
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+
+
+# TEST / CACHE / TEMP
+
+
+.cache/
+.tmp/
+.temp/
+*.cache
+*.tmp
+
+# Jest / Vitest
+
+/jest-cache
+.vitest/
+
+
+
+# BACKEND (FastAPI / Python / Celery)
+
+
+**pycache**/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual Environments
+
+venv/
+.env/
+.venv/
+ENV/
+
+# Python Packaging
+
+dist/
+build/
+*.egg-info/
+
+# Celery
+
+celerybeat-schedule
+celerybeat.pid
+
+
+# DATABASE / LOCAL STORAGE
+
+
+# mongodb local data
+
+/data/db/
+
+# sqlite (if ever used)
+
+*.sqlite3
+*.db
+
+
+# FILE UPLOADS (VERY IMPORTANT)
+
+
+uploads/
+public/uploads/
+tmp/uploads/
+
+# User-Generated Content
+
+*.pdf
+*.docx
+*.jpg
+*.jpeg
+*.png
+
+
+# GENERATED OUTPUTS / REPORTS
+
+
+reports/
+exports/
+generated/
+*.csv
+*.xlsx
+
+
+# AI / LLM ARTIFACTS
+
+
+# AI docs / prompts / scratch files
+
+agent.md
+claude.md
+gpt.md
+ai.md
+
+# AI tool folders
+
+.claude/
+.cursor/
+.openai/
+
+# embeddings / vector stores
+
+*.faiss
+*.index
+*.bin
+
+
+# INTERNAL DOCUMENTATION
+
 docs/
+internal-docs/
+architecture/
+notes/
+
+# (optional: keep public docs)
+
+!README.md
+
+
+# BUILD / TOOLING
+
+
+.vercel
+.turbo
+dist/
+
+# docker
+
+docker-data/
+*.tar
+
+# EDITOR / IDE
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+
+.idea/
+*.iml
+
+# SECURITY / MISC
+
+
+*.bak
+*.swp
+*.swo
+*~
+
+
+# OPTIONAL (uncomment if needed)
+
+
+# lockfiles (usually KEEP these)
+
+# package-lock.json
+
+# yarn.lock
+
+# pnpm-lock.yaml
