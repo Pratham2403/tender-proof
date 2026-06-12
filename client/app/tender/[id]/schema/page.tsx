@@ -5,6 +5,8 @@ import { useParams } from "next/navigation";
 import type { EvaluationSchema, Tender } from "@/types";
 import { api } from "@/lib/api";
 import { usePolling } from "@/lib/usePolling";
+import { IconAlert, Spinner } from "@/components/ui/icons";
+import { Alert, Card } from "@/components/ui/primitives";
 import { TenderNav } from "@/components/TenderNav";
 import { SchemaReviewPanel } from "@/components/schema/SchemaReviewPanel";
 
@@ -26,16 +28,34 @@ export default function SchemaPage() {
   usePolling(load, 3000);
 
   return (
-    <div>
+    <div className="animate-fade-up">
       <TenderNav tender={tender} />
       {schema ? (
         <SchemaReviewPanel tenderId={id} schema={schema} />
+      ) : tender?.status === "FAILED" ? (
+        <Alert tone="error" className="flex items-start gap-3 p-6">
+          <IconAlert className="mt-0.5 h-5 w-5 shrink-0 text-rose-500" />
+          <div>
+            <p className="text-sm font-semibold text-rose-900">
+              Schema compilation failed
+            </p>
+            <p className="mt-1 text-sm text-rose-700/80">
+              Check the worker logs and API keys, then re-upload the tender
+              from the dashboard.
+            </p>
+          </div>
+        </Alert>
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">
-          {tender?.status === "FAILED"
-            ? "Schema compilation failed. Check worker logs and API keys, then re-upload the tender."
-            : "Schema is being compiled from the tender document… this page will refresh automatically."}
-        </div>
+        <Card className="flex flex-col items-center justify-center px-8 py-16 text-center">
+          <Spinner className="h-6 w-6 text-indigo-600" />
+          <p className="mt-4 text-sm font-semibold text-slate-700">
+            Compiling eligibility schema
+          </p>
+          <p className="mt-1 max-w-sm text-sm text-slate-500">
+            The tender document is being read and structured into typed
+            criteria. This page refreshes automatically.
+          </p>
+        </Card>
       )}
     </div>
   );

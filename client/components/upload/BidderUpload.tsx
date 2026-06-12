@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { Button, Card } from "@/components/ui/primitives";
+import { FileDrop } from "@/components/ui/FileDrop";
+import { useToast } from "@/components/ui/toast";
 
 export function BidderUpload({
   tenderId,
@@ -10,39 +13,43 @@ export function BidderUpload({
   tenderId: string;
   onUploaded: () => void;
 }) {
+  const toast = useToast();
   const [companyName, setCompanyName] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!companyName.trim() || files.length === 0) return;
-    setError(null);
     setSubmitting(true);
     try {
       await api.createBidder(tenderId, companyName.trim(), files);
+      toast(
+        "success",
+        `${companyName.trim()} queued — extraction starts immediately.`,
+      );
       setCompanyName("");
       setFiles([]);
       onUploaded();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Upload failed");
+      toast("error", err instanceof Error ? err.message : "Upload failed");
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <form
-      onSubmit={submit}
-      className="rounded-xl border border-slate-200 bg-white p-6"
-    >
-      <h2 className="mb-4 text-base font-semibold">
-        Upload bidder submission
+    <Card className="p-6">
+      <h2 className="text-[15px] font-semibold text-slate-900">
+        Add bidder submission
       </h2>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-        <label className="flex-1 text-sm">
-          <span className="mb-1 block font-medium text-slate-700">
+      <p className="mt-0.5 text-sm text-slate-500">
+        Attach the bidder&apos;s full document package — typed PDFs, scans and
+        photographs are all read directly by the vision model.
+      </p>
+      <form onSubmit={submit} className="mt-5 space-y-4">
+        <label className="block text-sm">
+          <span className="mb-1.5 block font-medium text-slate-700">
             Company name
           </span>
           <input
@@ -50,37 +57,27 @@ export function BidderUpload({
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
             placeholder="e.g. Apex Constructions Pvt Ltd"
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm shadow-sm outline-none transition-shadow placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
             required
           />
         </label>
-        <label className="flex-1 text-sm">
-          <span className="mb-1 block font-medium text-slate-700">
-            Documents (PDF, DOCX, JPG, PNG — multiple allowed)
-          </span>
-          <input
-            type="file"
-            multiple
-            accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,.webp"
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-            className="w-full text-sm text-slate-500 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-indigo-700 hover:file:bg-indigo-100"
-            required
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={submitting || files.length === 0 || !companyName.trim()}
-          className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {submitting ? "Uploading…" : "Upload & evaluate"}
-        </button>
-      </div>
-      {files.length > 0 && (
-        <p className="mt-2 text-xs text-slate-500">
-          {files.length} file(s): {files.map((f) => f.name).join(", ")}
-        </p>
-      )}
-      {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
-    </form>
+        <FileDrop
+          files={files}
+          onChange={setFiles}
+          accept=".pdf,.docx,.doc,.jpg,.jpeg,.png,.webp"
+          multiple
+          hint="PDF, DOCX, JPG, PNG · multiple files · up to 50 MB each"
+        />
+        <div className="flex justify-end">
+          <Button
+            type="submit"
+            loading={submitting}
+            disabled={files.length === 0 || !companyName.trim()}
+          >
+            Upload & evaluate
+          </Button>
+        </div>
+      </form>
+    </Card>
   );
 }
