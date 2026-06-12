@@ -1,65 +1,95 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import type { Tender, TenderStatus } from "@/types";
+import { api } from "@/lib/api";
+import { StatusBadge } from "@/components/ui/badges";
+import { TenderUpload } from "@/components/upload/TenderUpload";
+
+const NEXT_STEP: Partial<Record<TenderStatus, { href: string; label: string }>> = {
+  PENDING_APPROVAL: { href: "schema", label: "Review schema →" },
+  APPROVED: { href: "bidders", label: "Upload bidders →" },
+  EVALUATING: { href: "bidders", label: "View progress →" },
+  COMPLETE: { href: "report", label: "View report →" },
+};
+
+export default function Dashboard() {
+  const [tenders, setTenders] = useState<Tender[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setTenders(await api.listTenders());
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load tenders");
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, [load]);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">
+          Procurement dashboard
+        </h1>
+        <p className="mt-1 text-sm text-slate-500">
+          Upload a tender, approve its compiled eligibility schema, then
+          evaluate bidder submissions with a fully auditable verdict trail.
+        </p>
+      </div>
+
+      <TenderUpload onCreated={load} />
+
+      <section>
+        <h2 className="mb-3 text-base font-semibold">Tenders</h2>
+        {error && (
+          <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-600">
+            {error} — is the backend running on port 8000?
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+        )}
+        {tenders && tenders.length === 0 && (
+          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-400">
+            No tenders yet. Upload one above to get started.
+          </p>
+        )}
+        <ul className="space-y-3">
+          {tenders?.map((t) => {
+            const next = NEXT_STEP[t.status];
+            return (
+              <li
+                key={t.tender_id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4"
+              >
+                <div>
+                  <p className="text-sm font-semibold">{t.title}</p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {new Date(t.created_at).toLocaleString()} ·{" "}
+                    {t.bidder_count} bidder(s)
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <StatusBadge status={t.status} />
+                  {next && (
+                    <Link
+                      href={`/tender/${t.tender_id}/${next.href}`}
+                      className="text-sm font-medium text-indigo-600 hover:text-indigo-800"
+                    >
+                      {next.label}
+                    </Link>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
     </div>
   );
 }

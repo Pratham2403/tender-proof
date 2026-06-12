@@ -87,7 +87,7 @@ pip install -r requirements.txt
 ### 3. Install frontend dependencies
 
 ```bash
-cd frontend
+cd client
 npm install
 ```
 
@@ -108,11 +108,14 @@ uvicorn app.main:app --reload --port 8000
 
 **Terminal 3 — Frontend:**
 ```bash
-cd frontend
+cd client
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+> Shortcut: with MongoDB and Redis already running, `./start.sh` launches the
+> Celery worker, FastAPI, and Next.js together.
 
 ### 5. (Optional) Load demo data
 
@@ -141,9 +144,10 @@ tenderproof/
 │   │   ├── services/                # Core logic (compiler, extractor, engine, audit)
 │   │   ├── tasks/                   # Celery task definitions
 │   │   └── ws/                      # WebSocket job progress
-│   ├── seed/                        # Demo data loader
+│   ├── seed/                        # Demo data loader + mock document generator
+│   ├── tests/                       # Unit tests (rule engine, audit chain, converter)
 │   └── requirements.txt
-└── frontend/
+└── client/
     ├── app/                         # Next.js App Router pages
     ├── components/                  # UI components
     ├── lib/                         # API client + WebSocket hook
