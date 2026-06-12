@@ -1,12 +1,22 @@
+import asyncio
+import random
 from datetime import datetime
 
+from pymongo.errors import DuplicateKeyError
+
 from app.models.audit import AuditEntry, AuditEventType
+
+MAX_APPEND_ATTEMPTS = 8
 
 
 class AuditLogger:
     """
     Append-only, hash-chained audit log writer.
     No update or delete methods exist by design.
+
+    Concurrency: a unique index on prev_hash guarantees only one writer can
+    extend a given chain head. On contention the loser re-reads the head and
+    retries, so parallel Celery workers can never fork the chain.
     """
 
     async def log(
@@ -16,29 +26,39 @@ class AuditLogger:
         entity_type: str,
         payload: dict,
     ) -> AuditEntry:
-        prev_hash = await self._get_last_hash()
-        # Truncate to milliseconds: BSON stores millisecond precision, and the
-        # hash must be reproducible from the round-tripped document.
-        now = datetime.utcnow()
-        created_at = now.replace(microsecond=(now.microsecond // 1000) * 1000)
-        entry_hash = AuditEntry.compute_hash(
-            event_type=event_type,
-            entity_id=entity_id,
-            payload=payload,
-            prev_hash=prev_hash,
-            created_at=created_at,
-        )
-        entry = AuditEntry(
-            event_type=event_type,
-            entity_id=entity_id,
-            entity_type=entity_type,
-            payload=payload,
-            prev_hash=prev_hash,
-            entry_hash=entry_hash,
-            created_at=created_at,
-        )
-        await entry.insert()
-        return entry
+        last_error: Exception | None = None
+        for attempt in range(MAX_APPEND_ATTEMPTS):
+            prev_hash = await self._get_last_hash()
+            # Truncate to milliseconds: BSON stores millisecond precision, and
+            # the hash must be reproducible from the round-tripped document.
+            now = datetime.utcnow()
+            created_at = now.replace(microsecond=(now.microsecond // 1000) * 1000)
+            entry_hash = AuditEntry.compute_hash(
+                event_type=event_type,
+                entity_id=entity_id,
+                payload=payload,
+                prev_hash=prev_hash,
+                created_at=created_at,
+            )
+            entry = AuditEntry(
+                event_type=event_type,
+                entity_id=entity_id,
+                entity_type=entity_type,
+                payload=payload,
+                prev_hash=prev_hash,
+                entry_hash=entry_hash,
+                created_at=created_at,
+            )
+            try:
+                await entry.insert()
+                return entry
+            except DuplicateKeyError as e:
+                # Another writer appended to the same head — back off and retry
+                last_error = e
+                await asyncio.sleep(0.05 * (2 ** attempt) + random.random() * 0.05)
+        raise RuntimeError(
+            f"Audit append failed after {MAX_APPEND_ATTEMPTS} attempts under contention"
+        ) from last_error
 
     async def verify_chain(self) -> bool:
         """Walk the full chain and confirm every link's hash is intact."""

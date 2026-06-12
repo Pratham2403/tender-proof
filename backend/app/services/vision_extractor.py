@@ -1,11 +1,16 @@
 import base64
 import json
+import logging
 
 from openai import AsyncOpenAI
+from tenacity import retry, stop_after_attempt, wait_random_exponential
 
 from app.config import settings
 from app.models.bidder import CriterionExtraction
 from app.models.tender import Criterion, CriterionType
+from app.services.value_parsing import parse_count, parse_crore, parse_score
+
+logger = logging.getLogger("tenderproof.vision_extractor")
 
 EXTRACTION_PROMPT_TEMPLATE = """
 You are extracting information from a government procurement bid document page.
@@ -45,6 +50,12 @@ class VisionExtractor:
     """
     Sends document page images to Qwen2.5-VL-72B via OpenRouter.
     Groups criteria into semantic clusters to reduce API calls.
+
+    Failure containment: each cluster call retries with exponential backoff
+    and jitter (handles OpenRouter 429s and transient malformed JSON). If a
+    cluster still fails after all retries, its criteria simply get no
+    extraction from this page — the confidence-0 fallback routes them to
+    REVIEW rather than crashing the bidder's whole extraction job.
     """
 
     CRITERION_TYPE_CLUSTERS: dict[str, list[CriterionType]] = {
@@ -72,7 +83,16 @@ class VisionExtractor:
         all_extractions: dict[str, CriterionExtraction] = {}
 
         for cluster_criteria in clusters:
-            extractions = await self._call_qwen(page_png_bytes, cluster_criteria)
+            try:
+                extractions = await self._call_qwen(page_png_bytes, cluster_criteria)
+            except Exception:
+                logger.warning(
+                    "vision extraction failed for cluster %s after retries; "
+                    "routing its criteria to REVIEW via confidence 0",
+                    [c.criterion_id for c in cluster_criteria],
+                    exc_info=True,
+                )
+                continue
             for ext in extractions:
                 existing = all_extractions.get(ext.criterion_id)
                 if existing is None or ext.confidence > existing.confidence:
@@ -91,6 +111,9 @@ class VisionExtractor:
                 )
         return list(all_extractions.values())
 
+    @retry(stop=stop_after_attempt(4),
+           wait=wait_random_exponential(multiplier=2, max=60),
+           reraise=True)
     async def _call_qwen(
         self, page_png_bytes: bytes, criteria: list[Criterion]
     ) -> list[CriterionExtraction]:
@@ -143,15 +166,15 @@ class VisionExtractor:
         )
 
     def _validate_value_type(self, value: str, criterion: Criterion) -> bool:
+        # Must agree with the rule engine's parsing, so a value that gets a
+        # confidence boost here can never hit a parse error at verdict time.
         try:
             if criterion.criterion_type == CriterionType.CURRENCY_THRESHOLD:
-                float(value.replace(",", "").replace("₹", "").replace("Cr", "").strip())
+                parse_crore(value)
             elif criterion.criterion_type == CriterionType.COUNT_MINIMUM:
-                int(value.strip())
+                parse_count(value)
             elif criterion.criterion_type == CriterionType.SIMILARITY_SCORE:
-                score = float(value.strip())
-                if not 0.0 <= score <= 1.0:
-                    return False
+                parse_score(value)
             return True
         except (ValueError, AttributeError):
             return False

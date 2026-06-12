@@ -7,6 +7,9 @@ from fastapi import WebSocket
 from app.worker import celery_app
 
 
+MAX_STREAM_SECONDS = 2 * 60 * 60  # safety net against leaked sockets
+
+
 class JobProgressManager:
     """
     Polls Celery task state and streams progress over WebSocket.
@@ -15,8 +18,10 @@ class JobProgressManager:
 
     async def stream(self, websocket: WebSocket, job_id: str):
         await websocket.accept()
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + MAX_STREAM_SECONDS
         try:
-            while True:
+            while loop.time() < deadline:
                 result = AsyncResult(job_id, app=celery_app)
                 state = result.state
                 meta = result.info if isinstance(result.info, dict) else {}

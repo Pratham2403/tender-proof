@@ -1,10 +1,13 @@
 import io
+import logging
 import subprocess
 import tempfile
 from pathlib import Path
 
 import fitz  # PyMuPDF
-from PIL import Image
+from PIL import Image, ImageStat
+
+logger = logging.getLogger("tenderproof.document_converter")
 
 
 class DocumentConverter:
@@ -15,6 +18,7 @@ class DocumentConverter:
 
     SUPPORTED_IMAGE_TYPES = {".jpg", ".jpeg", ".png", ".webp"}
     MAX_IMAGE_DIM = 2048  # pixels on longest edge — Qwen2.5-VL optimal input size
+    BLANK_PAGE_STDDEV = 3.0  # grayscale stddev below this ≈ blank / cover page
 
     def convert(self, file_path: str) -> list[tuple[int, bytes]]:
         """
@@ -65,16 +69,51 @@ class DocumentConverter:
         doc.close()
         return pages
 
+    @classmethod
+    def is_blank_page(cls, png_bytes: bytes) -> bool:
+        """
+        Cheap pre-filter: pages with near-zero pixel variance (blank sheets,
+        plain separators) are skipped before spending a vision-LLM call.
+        """
+        img = Image.open(io.BytesIO(png_bytes)).convert("L")
+        img.thumbnail((256, 256))
+        return ImageStat.Stat(img).stddev[0] < cls.BLANK_PAGE_STDDEV
+
     def _docx_to_images(self, path: Path) -> list[tuple[int, bytes]]:
         # LibreOffice headless converts DOCX → PDF, then _pdf_to_images
-        with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run(
-                ["libreoffice", "--headless", "--convert-to", "pdf",
-                 "--outdir", tmp, str(path)],
-                check=True, capture_output=True
-            )
-            pdf_path = Path(tmp) / (path.stem + ".pdf")
-            return self._pdf_to_images(pdf_path)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                subprocess.run(
+                    ["libreoffice", "--headless", "--convert-to", "pdf",
+                     "--outdir", tmp, str(path)],
+                    check=True, capture_output=True
+                )
+                pdf_path = Path(tmp) / (path.stem + ".pdf")
+                return self._pdf_to_images(pdf_path)
+        except (FileNotFoundError, subprocess.CalledProcessError):
+            # Degraded path when LibreOffice is unavailable: extract the text
+            # with python-docx and re-render it into pages, so the vision
+            # pipeline still works (layout is lost, text content is not).
+            logger.warning("LibreOffice unavailable for %s — falling back to "
+                           "python-docx text rendering", path.name)
+            return self._docx_text_fallback(path)
+
+    def _docx_text_fallback(self, path: Path) -> list[tuple[int, bytes]]:
+        from docx import Document as DocxDocument
+        text = "\n".join(p.text for p in DocxDocument(str(path)).paragraphs)
+        doc = fitz.open()
+        chunk_size = 3000  # ≈ one rendered A4 page of 11pt text
+        chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)] or [""]
+        for chunk in chunks:
+            page = doc.new_page(width=595, height=842)
+            page.insert_textbox(fitz.Rect(50, 50, 545, 792), chunk, fontsize=11,
+                                fontname="helv")
+        pages = []
+        for i, page in enumerate(doc, start=1):
+            pix = page.get_pixmap(matrix=fitz.Matrix(150 / 72, 150 / 72))
+            pages.append((i, self._resize_if_needed(pix.tobytes("png"))))
+        doc.close()
+        return pages
 
     def _image_to_page(self, path: Path) -> list[tuple[int, bytes]]:
         # Normalize all image inputs to PNG so the data-URI mime type is correct

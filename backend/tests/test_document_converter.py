@@ -55,3 +55,17 @@ def test_extract_text_from_pdf(sample_pdf):
     text = DocumentConverter().extract_text(sample_pdf)
     assert "Page 1 content" in text
     assert "Page 2 content" in text
+
+
+def test_blank_page_detection(tmp_path):
+    path = tmp_path / "mixed.pdf"
+    doc = fitz.open()
+    doc.new_page()  # blank
+    page = doc.new_page()
+    page.insert_text((72, 72), "Substantive bid content " * 20)
+    doc.save(str(path))
+    doc.close()
+
+    pages = DocumentConverter().convert(str(path))
+    assert DocumentConverter.is_blank_page(pages[0][1]) is True
+    assert DocumentConverter.is_blank_page(pages[1][1]) is False

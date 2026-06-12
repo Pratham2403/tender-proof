@@ -5,6 +5,7 @@ from enum import Enum
 
 from beanie import Document
 from pydantic import Field
+from pymongo import ASCENDING, IndexModel
 
 
 class AuditEventType(str, Enum):
@@ -27,6 +28,12 @@ class AuditEntry(Document):
 
     class Settings:
         name = "audit_log"
+        # Each entry's prev_hash must be unique: two concurrent writers that
+        # both read the same chain head cannot both append — the loser gets a
+        # DuplicateKeyError and re-reads the head. This makes the hash chain
+        # race-safe across parallel Celery workers.
+        indexes = [IndexModel([("prev_hash", ASCENDING)], unique=True,
+                              name="uniq_prev_hash")]
 
     @staticmethod
     def compute_hash(event_type: str, entity_id: str, payload: dict,

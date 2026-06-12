@@ -12,6 +12,7 @@ from app.models.tender import (
     SimilarityScoreParams,
 )
 from app.models.verdict import Verdict, VerdictRecord
+from app.services.value_parsing import parse_count, parse_crore, parse_score
 
 CONFIDENCE_THRESHOLD = settings.confidence_threshold  # Extractions below this → REVIEW
 
@@ -93,7 +94,7 @@ class RuleEngine:
             )
 
     def _eval_currency(self, criterion, extraction, p: CurrencyThresholdParams, v, *ids) -> VerdictRecord:
-        amount = float(v.replace(",", "").replace("₹", "").replace("Cr", "").strip())
+        amount = parse_crore(v)
         passed = amount >= p.minimum_crore
         rule = f"turnover {amount:.2f} Cr {'≥' if passed else '<'} {p.minimum_crore} Cr"
         reason = (f"Annual turnover of ₹{amount:.2f} Cr meets the minimum of ₹{p.minimum_crore} Cr."
@@ -105,7 +106,7 @@ class RuleEngine:
                                   confidence=extraction.confidence)
 
     def _eval_count(self, criterion, extraction, p: CountMinimumParams, v, *ids) -> VerdictRecord:
-        count = int(v.strip())
+        count = parse_count(v)
         passed = count >= p.minimum_count
         qualifier = f" (within last {p.within_years} years)" if p.within_years else ""
         rule = f"count {count} {'≥' if passed else '<'} {p.minimum_count}{qualifier}"
@@ -153,7 +154,7 @@ class RuleEngine:
                                   reason=reason, confidence=extraction.confidence)
 
     def _eval_similarity(self, criterion, extraction, p: SimilarityScoreParams, v, *ids) -> VerdictRecord:
-        score = float(v)  # v is the LLM-produced similarity score string
+        score = parse_score(v)  # v is the LLM-produced similarity score string
         if score >= p.pass_threshold:
             verdict, reason = Verdict.PASS, f"Similarity score {score:.2f} ≥ pass threshold {p.pass_threshold}."
         elif score <= p.fail_threshold:

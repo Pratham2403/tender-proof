@@ -1,6 +1,9 @@
 import asyncio
+import logging
 
 from celery import shared_task
+
+logger = logging.getLogger("tenderproof.tasks.evaluate_bidder")
 
 from app.database import init_db_sync
 from app.models.audit import AuditEventType
@@ -51,6 +54,8 @@ async def _evaluate_bidder_async(bidder_id: str, schema_id: str):
 
     bidder.status = BidderStatus.EVALUATED
     await bidder.save()
+    logger.info("evaluation complete bidder=%s tender=%s criteria=%d",
+                bidder_id, bidder.tender_id, len(schema.criteria))
 
     # If every bidder for this tender is now evaluated, finalize the report
     from app.tasks.finalize_report import finalize_report_task

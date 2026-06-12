@@ -4,10 +4,12 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from app.config import settings
 from app.models.audit import AuditEntry
 from app.models.bidder import Bidder, BidderProfile
+from app.models.cache import ExtractionCache
 from app.models.tender import EvaluationSchema, Tender
 from app.models.verdict import VerdictRecord
 
-DOCUMENT_MODELS = [Tender, EvaluationSchema, Bidder, BidderProfile, VerdictRecord, AuditEntry]
+DOCUMENT_MODELS = [Tender, EvaluationSchema, Bidder, BidderProfile,
+                   VerdictRecord, AuditEntry, ExtractionCache]
 
 
 async def init_db():

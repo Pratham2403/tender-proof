@@ -1,6 +1,9 @@
 import asyncio
+import logging
 
 from celery import shared_task
+
+logger = logging.getLogger("tenderproof.tasks.compile_schema")
 
 from app.database import init_db_sync
 from app.models.audit import AuditEventType
@@ -20,6 +23,7 @@ async def _compile_schema_async(task, tender_id: str):
     tender = await Tender.get(tender_id)
     tender.status = TenderStatus.COMPILING
     await tender.save()
+    logger.info("schema compilation started tender=%s", tender_id)
 
     try:
         task.update_state(state="PROGRESS", meta={"pct": 10, "message": "Extracting tender text"})
@@ -48,8 +52,10 @@ async def _compile_schema_async(task, tender_id: str):
             payload={"tender_id": tender_id, "criteria_count": len(criteria)},
         )
         task.update_state(state="PROGRESS", meta={"pct": 100, "message": "Schema ready for review"})
+        logger.info("schema compiled tender=%s criteria=%d", tender_id, len(criteria))
 
     except Exception as exc:
+        logger.exception("schema compilation failed tender=%s", tender_id)
         tender.status = TenderStatus.FAILED
         await tender.save()
         raise task.retry(exc=exc)

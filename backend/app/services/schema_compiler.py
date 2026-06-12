@@ -1,9 +1,13 @@
 import json
 
 import google.generativeai as genai
+from tenacity import retry, stop_after_attempt, wait_random_exponential
 
 from app.config import settings
 from app.models.tender import Criterion
+
+# Gemini Flash has a 1M-token window; cap input defensively well below it
+MAX_TENDER_CHARS = 800_000
 
 COMPILE_SYSTEM_PROMPT = """
 You are a government procurement expert. Extract ALL eligibility criteria from the tender document.
@@ -68,20 +72,20 @@ class SchemaCompiler:
         )
 
     async def compile(self, tender_text: str) -> list[Criterion]:
+        tender_text = tender_text[:MAX_TENDER_CHARS]
+
         # Pass 1: initial extraction
-        response = await self._model.generate_content_async(
+        criteria_data: list[dict] = await self._generate_json(
             [COMPILE_SYSTEM_PROMPT, tender_text]
         )
-        criteria_data: list[dict] = json.loads(_strip_json_fences(response.text))
         criteria = [Criterion(**c) for c in criteria_data]
 
         # Pass 2: self-critique (catches missed criteria)
         critique_prompt = SELF_CRITIQUE_PROMPT.format(
             existing_criteria=json.dumps(criteria_data, indent=2),
-            tender_text=tender_text[:50000],  # cap to avoid token overflow
+            tender_text=tender_text[:50000],  # critique pass needs less context
         )
-        critique_response = await self._model.generate_content_async(critique_prompt)
-        additional: list[dict] = json.loads(_strip_json_fences(critique_response.text))
+        additional: list[dict] = await self._generate_json(critique_prompt)
         if additional:
             # Re-index criterion_ids to continue sequence
             offset = len(criteria)
@@ -90,3 +94,12 @@ class SchemaCompiler:
             criteria.extend([Criterion(**c) for c in additional])
 
         return criteria
+
+    @retry(stop=stop_after_attempt(4),
+           wait=wait_random_exponential(multiplier=2, max=60),
+           reraise=True)
+    async def _generate_json(self, prompt) -> list[dict]:
+        # Retries cover both transient API errors (429, timeouts) and the
+        # occasional malformed-JSON response at temperature 0.
+        response = await self._model.generate_content_async(prompt)
+        return json.loads(_strip_json_fences(response.text))

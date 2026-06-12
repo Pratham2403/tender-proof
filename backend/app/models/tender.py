@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Union
 
 from beanie import Document
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class CriterionType(str, Enum):
@@ -65,12 +65,24 @@ class Criterion(BaseModel):
     accepted_evidence: list[str] = []
     source_text: str = ""
 
-    def model_post_init(self, __context) -> None:
-        # The params union is ambiguous for overlapping shapes (e.g. an empty dict
-        # validates as BooleanPresenceParams). Coerce to the type-specific model.
-        expected = _PARAMS_BY_TYPE[self.criterion_type]
-        if not isinstance(self.params, expected):
-            self.params = expected(**self.params.model_dump(exclude_unset=True))
+    @model_validator(mode="before")
+    @classmethod
+    def _resolve_params_by_type(cls, data):
+        # The params union is ambiguous for overlapping shapes (e.g. an empty
+        # dict validates as several of the param models). criterion_type is
+        # the discriminator, so resolve params against it explicitly instead
+        # of relying on smart-union scoring — this must be deterministic for
+        # MongoDB round-trips.
+        if isinstance(data, dict):
+            ctype = data.get("criterion_type")
+            params = data.get("params")
+            if ctype is not None and params is not None:
+                expected = _PARAMS_BY_TYPE[CriterionType(ctype)]
+                if isinstance(params, BaseModel):
+                    params = params.model_dump()
+                if not isinstance(params, expected):
+                    data = {**data, "params": expected(**params)}
+        return data
 
 
 class TenderStatus(str, Enum):

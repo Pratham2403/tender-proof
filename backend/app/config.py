@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     upload_dir: str = "./uploads"
     confidence_threshold: float = 0.70
     cors_origins: str = "http://localhost:3000"
+    max_upload_mb: int = 50
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

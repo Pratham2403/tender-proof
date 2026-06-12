@@ -6,6 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from app.config import settings
 from app.models.bidder import Bidder
 from app.models.tender import EvaluationSchema, SchemaStatus, Tender, TenderStatus
+from app.routers.common import fetch_or_404
 from app.schemas.bidder import BidderCreateResponse, BidderResponse
 from app.tasks.extract_bidder import extract_bidder_task
 
@@ -20,9 +21,7 @@ async def create_bidder(
     company_name: str = Form(...),
     files: list[UploadFile] = File(...),
 ) -> BidderCreateResponse:
-    tender = await Tender.get(tender_id)
-    if not tender:
-        raise HTTPException(404, "Tender not found")
+    tender = await fetch_or_404(Tender, tender_id, "Tender")
 
     schema = await EvaluationSchema.find_one(EvaluationSchema.tender_id == tender_id)
     if not schema or schema.status != SchemaStatus.APPROVED:

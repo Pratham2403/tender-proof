@@ -15,6 +15,7 @@ from app.schemas.tender import (
     TenderCreateResponse,
     TenderResponse,
 )
+from app.routers.common import fetch_or_404
 from app.schemas.verdict import ConsolidatedReport
 from app.services.audit_logger import AuditLogger
 from app.services.report_builder import ReportBuilder
@@ -54,21 +55,25 @@ async def create_tender(
 @router.get("", response_model=list[TenderResponse])
 async def list_tenders() -> list[TenderResponse]:
     tenders = await Tender.find_all().sort("-created_at").to_list()
-    out = []
-    for t in tenders:
-        bidder_count = await Bidder.find(Bidder.tender_id == str(t.id)).count()
-        out.append(TenderResponse(
+    # Single aggregation instead of one count query per tender
+    counts = {
+        row["_id"]: row["n"]
+        for row in await Bidder.aggregate(
+            [{"$group": {"_id": "$tender_id", "n": {"$sum": 1}}}]
+        ).to_list()
+    }
+    return [
+        TenderResponse(
             tender_id=str(t.id), title=t.title, status=t.status,
-            created_at=t.created_at, bidder_count=bidder_count,
-        ))
-    return out
+            created_at=t.created_at, bidder_count=counts.get(str(t.id), 0),
+        )
+        for t in tenders
+    ]
 
 
 @router.get("/{tender_id}", response_model=TenderResponse)
 async def get_tender(tender_id: str) -> TenderResponse:
-    tender = await Tender.get(tender_id)
-    if not tender:
-        raise HTTPException(404, "Tender not found")
+    tender = await fetch_or_404(Tender, tender_id, "Tender")
     bidder_count = await Bidder.find(Bidder.tender_id == tender_id).count()
     return TenderResponse(
         tender_id=tender_id, title=tender.title, status=tender.status,
@@ -102,7 +107,7 @@ async def approve_schema(tender_id: str, body: SchemaApprovalRequest) -> SchemaA
     schema.approved_at = datetime.utcnow()
     await schema.save()
 
-    tender = await Tender.get(tender_id)
+    tender = await fetch_or_404(Tender, tender_id, "Tender")
     tender.status = TenderStatus.APPROVED
     await tender.save()
 
@@ -117,9 +122,7 @@ async def approve_schema(tender_id: str, body: SchemaApprovalRequest) -> SchemaA
 
 @router.get("/{tender_id}/report", response_model=ConsolidatedReport)
 async def get_report(tender_id: str) -> ConsolidatedReport:
-    tender = await Tender.get(tender_id)
-    if not tender:
-        raise HTTPException(404, "Tender not found")
+    await fetch_or_404(Tender, tender_id, "Tender")
     schema = await EvaluationSchema.find_one(EvaluationSchema.tender_id == tender_id)
     if not schema:
         raise HTTPException(404, "Schema not found")

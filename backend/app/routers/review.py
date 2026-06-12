@@ -4,6 +4,7 @@ from app.models.audit import AuditEventType
 from app.models.bidder import Bidder
 from app.models.tender import EvaluationSchema
 from app.models.verdict import Verdict, VerdictRecord
+from app.routers.common import fetch_or_404
 from app.schemas.verdict import ReviewItem, ReviewResolveRequest
 from app.services.audit_logger import AuditLogger
 
@@ -54,8 +55,8 @@ async def get_review_queue(tender_id: str) -> list[ReviewItem]:
 
 @router.post("/{item_id}")
 async def resolve_review_item(tender_id: str, item_id: str, body: ReviewResolveRequest):
-    record = await VerdictRecord.get(item_id)
-    if not record or record.tender_id != tender_id:
+    record = await fetch_or_404(VerdictRecord, item_id, "Review item")
+    if record.tender_id != tender_id:
         raise HTTPException(404, "Review item not found")
     if body.verdict not in (Verdict.PASS, Verdict.FAIL):
         raise HTTPException(400, "Resolved verdict must be PASS or FAIL")
