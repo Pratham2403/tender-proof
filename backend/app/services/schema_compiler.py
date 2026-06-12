@@ -57,14 +57,14 @@ def _strip_json_fences(text: str) -> str:
 
 class SchemaCompiler:
     """
-    Calls Gemini 2.0 Flash to transform raw tender text into a typed EvaluationSchema.
+    Calls Gemini 2.5 Flash to transform raw tender text into a typed EvaluationSchema.
     Runs a self-critique pass to catch missed criteria.
     """
 
     def __init__(self):
         genai.configure(api_key=settings.google_api_key)
         self._model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash-exp",
+            model_name="gemini-2.5-flash",
             generation_config=genai.GenerationConfig(
                 response_mime_type="application/json",
                 temperature=0.0,

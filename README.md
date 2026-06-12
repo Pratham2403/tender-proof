@@ -8,9 +8,9 @@ A locally-deployable AI platform that automates government tender eligibility ev
 
 ## How It Works
 
-1. **Upload tender** — Procurement officer uploads a tender PDF/DOCX. Gemini 2.0 Flash extracts all eligibility criteria into a typed `EvaluationSchema`.
+1. **Upload tender** — Procurement officer uploads a tender PDF/DOCX. Gemini 3.5 Flash extracts all eligibility criteria into a typed `EvaluationSchema`.
 2. **Review schema** — Officer reviews and approves (or edits) the extracted criteria before evaluation begins.
-3. **Upload bidder submissions** — Multi-file packages (typed PDFs, scanned documents, DOCX, JPG/PNG). Qwen2.5-VL-72B reads each page as an image — no OCR preprocessing.
+3. **Upload bidder submissions** — Multi-file packages (typed PDFs, scanned documents, DOCX, JPG/PNG). Gemini 2.5 Flash Lite reads each page as an image — no OCR preprocessing.
 4. **Automated evaluation** — A pure deterministic rule engine compares each bidder's extracted values against the approved schema. Every verdict cites: criterion → source document → page number → extracted value → rule applied.
 5. **Human review queue** — Any extraction with confidence < 0.70 routes to a review queue. Officer confirms or overrides. All overrides are logged.
 6. **Consolidated report** — Per-criterion PASS / FAIL / REVIEW verdict for every bidder, with full citation trail.
@@ -25,7 +25,7 @@ Next.js Dashboard  ──REST/WS──►  FastAPI  ──►  Redis  ──► 
                                               ┌──────────────────┼──────────────────┐
                                               ▼                  ▼                  ▼
                                        Schema Compiler    Vision Extractor     Rule Engine
-                                       (Gemini Flash)    (Qwen2.5-VL-72B)    (pure Python)
+                                       (Gemini 2.5 Flash) (Gemini 2.5 Flash Lite) (pure Python)
                                               │                  │                  │
                                               └──────────────────┴──────────────────┘
                                                                  │
@@ -38,8 +38,8 @@ Next.js Dashboard  ──REST/WS──►  FastAPI  ──►  Redis  ──► 
 | Backend API | FastAPI, Python 3.11+, Beanie ODM |
 | Task queue | Celery 5.x + Redis |
 | Database | MongoDB (Beanie ODM, Pydantic v2) |
-| Tender schema compilation | Gemini 2.0 Flash — Google AI Studio free tier |
-| Bidder document extraction | Qwen2.5-VL-72B-Instruct — OpenRouter free tier |
+| Tender schema compilation | Gemini 2.5 Flash — Google AI Studio free tier |
+| Bidder document extraction | Gemini 2.5 Flash Lite — Google AI Studio free tier |
 | Document conversion | PyMuPDF (PDF → PNG), LibreOffice headless (DOCX → PDF) |
 
 ---
@@ -93,20 +93,28 @@ npm install
 
 ### 4. Start all services
 
-**Terminal 1 — MongoDB:**
+**MongoDB and Redis** — if you installed them via your package manager (e.g. `apt`), they run as system services and are likely already active. Verify with:
+
 ```bash
-mongod --dbpath ./data/db
+sudo systemctl status mongod
+sudo systemctl status redis
 ```
 
-**Terminal 2 — Backend (Redis + Celery + FastAPI):**
+If either is not running, start it:
+
+```bash
+sudo systemctl start mongod   # or: mongod --dbpath ./data/db
+sudo systemctl start redis    # or: redis-server
+```
+
+**Terminal 1 — Backend (Celery + FastAPI):**
 ```bash
 cd backend
-redis-server &
 celery -A app.worker worker --loglevel=info &
 uvicorn app.main:app --reload --port 8000
 ```
 
-**Terminal 3 — Frontend:**
+**Terminal 2 — Frontend:**
 ```bash
 cd client
 npm run dev

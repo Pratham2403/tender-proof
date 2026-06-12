@@ -2,7 +2,7 @@ import base64
 import json
 import logging
 
-from openai import AsyncOpenAI
+import google.generativeai as genai
 from tenacity import retry, stop_after_attempt, wait_random_exponential
 
 from app.config import settings
@@ -48,14 +48,14 @@ def _strip_json_fences(text: str) -> str:
 
 class VisionExtractor:
     """
-    Sends document page images to Qwen2.5-VL-72B via OpenRouter.
+    Sends document page images to Gemini 2.5 Flash Lite (Google AI Studio free tier).
     Groups criteria into semantic clusters to reduce API calls.
 
     Failure containment: each cluster call retries with exponential backoff
-    and jitter (handles OpenRouter 429s and transient malformed JSON). If a
-    cluster still fails after all retries, its criteria simply get no
-    extraction from this page — the confidence-0 fallback routes them to
-    REVIEW rather than crashing the bidder's whole extraction job.
+    and jitter (handles 429s and transient malformed JSON). If a cluster still
+    fails after all retries, its criteria get no extraction from this page —
+    the confidence-0 fallback routes them to REVIEW rather than crashing the
+    bidder's whole extraction job.
     """
 
     CRITERION_TYPE_CLUSTERS: dict[str, list[CriterionType]] = {
@@ -65,9 +65,13 @@ class VisionExtractor:
     }
 
     def __init__(self):
-        self._client = AsyncOpenAI(
-            api_key=settings.openrouter_api_key,
-            base_url="https://openrouter.ai/api/v1",
+        genai.configure(api_key=settings.google_api_key)
+        self._model = genai.GenerativeModel(
+            model_name="gemini-2.5-flash-lite",
+            generation_config=genai.GenerationConfig(
+                response_mime_type="application/json",
+                temperature=0.0,
+            ),
         )
 
     async def extract_page(
@@ -84,7 +88,7 @@ class VisionExtractor:
 
         for cluster_criteria in clusters:
             try:
-                extractions = await self._call_qwen(page_png_bytes, cluster_criteria)
+                extractions = await self._call_gemini(page_png_bytes, cluster_criteria)
             except Exception:
                 logger.warning(
                     "vision extraction failed for cluster %s after retries; "
@@ -114,33 +118,25 @@ class VisionExtractor:
     @retry(stop=stop_after_attempt(4),
            wait=wait_random_exponential(multiplier=2, max=60),
            reraise=True)
-    async def _call_qwen(
+    async def _call_gemini(
         self, page_png_bytes: bytes, criteria: list[Criterion]
     ) -> list[CriterionExtraction]:
-        b64 = base64.b64encode(page_png_bytes).decode()
         criteria_json = json.dumps([
             {"criterion_id": c.criterion_id, "label": c.label,
              "type": c.criterion_type, "params": c.params.model_dump(mode="json")}
             for c in criteria
         ], indent=2)
 
-        response = await self._client.chat.completions.create(
-            model="qwen/qwen2.5-vl-72b-instruct:free",
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "image_url",
-                     "image_url": {"url": f"data:image/png;base64,{b64}"}},
-                    {"type": "text",
-                     "text": EXTRACTION_PROMPT_TEMPLATE.format(criteria_json=criteria_json)},
-                ],
-            }],
-            temperature=0.0,
-            max_tokens=1500,
-        )
+        image_part = {
+            "inline_data": {
+                "mime_type": "image/png",
+                "data": base64.b64encode(page_png_bytes).decode(),
+            }
+        }
+        text_part = EXTRACTION_PROMPT_TEMPLATE.format(criteria_json=criteria_json)
 
-        raw = response.choices[0].message.content
-        items: list[dict] = json.loads(_strip_json_fences(raw))
+        response = await self._model.generate_content_async([image_part, text_part])
+        items: list[dict] = json.loads(_strip_json_fences(response.text))
         return [self._build_extraction(item, criteria) for item in items]
 
     def _build_extraction(self, item: dict, criteria: list[Criterion]) -> CriterionExtraction:
