@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { Bidder, Tender } from "@/types";
 import { api } from "@/lib/api";
+import { usePolling } from "@/lib/usePolling";
 import { StatusBadge } from "@/components/ui/badges";
 import { TenderNav } from "@/components/TenderNav";
 import { BidderUpload } from "@/components/upload/BidderUpload";
@@ -29,11 +30,7 @@ export default function BiddersPage() {
     }
   }, [id]);
 
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 4000);
-    return () => clearInterval(t);
-  }, [load]);
+  usePolling(load, 4000);
 
   const schemaApproved =
     tender &&

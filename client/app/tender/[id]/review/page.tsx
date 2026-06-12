@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { ReviewItem, Tender } from "@/types";
 import { api } from "@/lib/api";
+import { usePolling } from "@/lib/usePolling";
 import { TenderNav } from "@/components/TenderNav";
 import { ReviewQueueItem } from "@/components/review/ReviewQueueItem";
 
@@ -28,11 +29,7 @@ export default function ReviewPage() {
     }
   }, [id]);
 
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
-  }, [load]);
+  usePolling(load, 5000);
 
   return (
     <div>

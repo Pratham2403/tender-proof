@@ -4,21 +4,35 @@ import { useEffect, useRef, useState } from "react";
 import type { JobProgressEvent } from "@/types";
 import { API_BASE, api } from "@/lib/api";
 
+interface JobEventState {
+  jobId: string | null;
+  event: JobProgressEvent | null;
+}
+
 /**
  * Streams job progress over WebSocket, falling back to REST polling if the
- * socket drops. Returns the latest progress event.
+ * socket drops. Returns the latest progress event for the given job.
  */
 export function useJobProgress(jobId: string | null) {
-  const [event, setEvent] = useState<JobProgressEvent | null>(null);
+  // State is keyed by jobId so switching jobs implicitly resets the event
+  // without a synchronous setState inside the effect.
+  const [state, setState] = useState<JobEventState>({ jobId: null, event: null });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!jobId) return;
-    setEvent(null);
 
     const wsUrl = API_BASE.replace(/^http/, "ws") + `/ws/jobs/${jobId}`;
     let ws: WebSocket | null = null;
     let closed = false;
+    const emit = (event: JobProgressEvent) => setState({ jobId, event });
+
+    const stopPolling = () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
 
     const startPolling = () => {
       if (pollRef.current) return;
@@ -26,13 +40,13 @@ export function useJobProgress(jobId: string | null) {
         try {
           const status = await api.getJobStatus(jobId);
           if (status.status === "SUCCESS") {
-            setEvent({ type: "complete" });
+            emit({ type: "complete" });
             stopPolling();
           } else if (status.status === "FAILURE") {
-            setEvent({ type: "error", reason: status.message });
+            emit({ type: "error", reason: status.message });
             stopPolling();
           } else {
-            setEvent({
+            emit({
               type: "progress",
               pct: status.progress_pct,
               message: status.message,
@@ -44,18 +58,11 @@ export function useJobProgress(jobId: string | null) {
       }, 2000);
     };
 
-    const stopPolling = () => {
-      if (pollRef.current) {
-        clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-
     try {
       ws = new WebSocket(wsUrl);
       ws.onmessage = (msg) => {
         const data = JSON.parse(msg.data) as JobProgressEvent;
-        setEvent(data);
+        emit(data);
         if (data.type === "complete" || data.type === "error") {
           closed = true;
           ws?.close();
@@ -78,5 +85,5 @@ export function useJobProgress(jobId: string | null) {
     };
   }, [jobId]);
 
-  return event;
+  return state.jobId === jobId ? state.event : null;
 }

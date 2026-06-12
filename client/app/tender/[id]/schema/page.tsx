@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useParams } from "next/navigation";
 import type { EvaluationSchema, Tender } from "@/types";
 import { api } from "@/lib/api";
+import { usePolling } from "@/lib/usePolling";
 import { TenderNav } from "@/components/TenderNav";
 import { SchemaReviewPanel } from "@/components/schema/SchemaReviewPanel";
 
@@ -11,29 +12,18 @@ export default function SchemaPage() {
   const { id } = useParams<{ id: string }>();
   const [tender, setTender] = useState<Tender | null>(null);
   const [schema, setSchema] = useState<EvaluationSchema | null>(null);
-  const [waiting, setWaiting] = useState(false);
 
   const load = useCallback(async () => {
     const t = await api.getTender(id);
     setTender(t);
     try {
       setSchema(await api.getSchema(id));
-      setWaiting(false);
     } catch {
-      // Schema not compiled yet — keep polling while the worker runs
-      setWaiting(true);
+      // Schema not compiled yet — polling continues while the worker runs
     }
   }, [id]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (!waiting) return;
-    const t = setInterval(load, 3000);
-    return () => clearInterval(t);
-  }, [waiting, load]);
+  usePolling(load, 3000);
 
   return (
     <div>

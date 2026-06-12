@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useJobProgress } from "@/lib/ws";
@@ -14,6 +14,12 @@ export function TenderUpload({ onCreated }: { onCreated?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const progress = useJobProgress(jobId);
+
+  useEffect(() => {
+    if (progress?.type === "complete" && tenderId) {
+      router.push(`/tender/${tenderId}/schema`);
+    }
+  }, [progress, tenderId, router]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,9 +39,6 @@ export function TenderUpload({ onCreated }: { onCreated?: () => void }) {
   };
 
   if (jobId) {
-    if (progress?.type === "complete") {
-      router.push(`/tender/${tenderId}/schema`);
-    }
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-6">
         {progress?.type === "error" ? (

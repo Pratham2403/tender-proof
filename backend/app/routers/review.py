@@ -46,8 +46,9 @@ async def get_review_queue(tender_id: str) -> list[ReviewItem]:
             created_at=r.created_at,
         ))
 
-    # Rank by impact × uncertainty: mandatory uncertain items first
-    items.sort(key=lambda i: (2 if i.mandatory else 1) * (1 - i.confidence), reverse=True)
+    # Rank by impact × uncertainty — (mandatory × 2 + 1) × (1 − confidence),
+    # so uncertain mandatory items surface first
+    items.sort(key=lambda i: (3 if i.mandatory else 1) * (1 - i.confidence), reverse=True)
     return items
 
 

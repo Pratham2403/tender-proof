@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import type { Tender, TenderStatus } from "@/types";
 import { api } from "@/lib/api";
+import { usePolling } from "@/lib/usePolling";
 import { StatusBadge } from "@/components/ui/badges";
 import { TenderUpload } from "@/components/upload/TenderUpload";
 
@@ -27,11 +28,7 @@ export default function Dashboard() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
-  }, [load]);
+  usePolling(load, 5000);
 
   return (
     <div className="space-y-8">

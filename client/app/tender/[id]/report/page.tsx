@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { ConsolidatedReport, Tender } from "@/types";
 import { api } from "@/lib/api";
+import { usePolling } from "@/lib/usePolling";
 import { TenderNav } from "@/components/TenderNav";
 import { BidderVerdictCard } from "@/components/report/BidderVerdictCard";
 import { ConsolidatedTable } from "@/components/report/ConsolidatedTable";
@@ -26,11 +27,7 @@ export default function ReportPage() {
     }
   }, [id]);
 
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 5000);
-    return () => clearInterval(t);
-  }, [load]);
+  usePolling(load, 5000);
 
   const reviewCount =
     report?.bidder_summaries.reduce(
